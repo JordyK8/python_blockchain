@@ -73,30 +73,22 @@ async def register_and_broadcast_node():
         async with aiohttp.ClientSession() as session:
             async with session.post(f'{node}/register-node', json={'new_node_url': new_node_url}) as response:
                 return await response.text()
-
+    print('nodes:', bc.network_nodes)
     tasks = [register_node(node, new_node_url) for node in bc.network_nodes]
     data = await asyncio.gather(*tasks)
-
-    print(data)
 
     async def bulk_register_data(all_network_nodes, new_node_url):
         async with aiohttp.ClientSession() as session:
             async with session.post(f'{new_node_url}/register-nodes-bulk', json={'all_network_nodes': all_network_nodes}) as response:
                 return await response.text()
-
-    all_network_nodes = bc.network_nodes.append(bc.current_node_url)
+  
+    all_network_nodes = bc.network_nodes + [bc.current_node_url]
     bulk_register_data = await bulk_register_data(all_network_nodes, new_node_url)
     print(bulk_register_data)
     
     return jsonify({
         'message': 'New node registered successfully',
     })
-
-
-
-
-    for node in bc.network_nodes:
-        requests.post(f'{node}/register-node', json={'new_node_url': new_node_url})
 
 
 # Register a new node
@@ -118,6 +110,7 @@ def register_node():
 @app.route('/register-nodes-bulk', methods=['POST'])
 def register_nodes_bulk():
     data = request.json
+    print('data:', data)
     all_network_nodes = data['all_network_nodes']
     print('all_network_nodes:', all_network_nodes)
     for node in all_network_nodes:
@@ -132,4 +125,3 @@ if __name__ == '__main__':
     app.run(debug=True, port=port)
 
 
-#video at 3:07:17
