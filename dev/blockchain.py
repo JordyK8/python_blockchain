@@ -2,7 +2,7 @@ from datetime import datetime
 import json
 import hashlib
 import sys
-
+from uuid import uuid4
 port = sys.argv[1]
 
 class Blockchain:
@@ -26,19 +26,24 @@ class Blockchain:
         }
         self.pending_transactions = []
         self.chain.append(block)
+        # broadcast to all nodes
         return block
 
     def get_last_block(self):
         return self.chain[-1]
     
     def create_new_transaction(self, sender, recipient, amount):
-        self.pending_transactions.append({
+        return {
             'sender': sender,
             'recipient': recipient,
             'amount': amount,
-        })
+            'transaction_id': str(uuid4()).replace('-', ''),
+        }
+
+    def add_transaction_to_pending_transactions(self, transaction):
+        self.pending_transactions.append(transaction)
         return self.get_last_block()['index'] + 1
-    
+
     def hash_block(self, previous_block_hash, current_block_data, nonce):
         current_block_data_string = json.dumps(current_block_data, sort_keys=True).encode()
         data_as_string = f'{previous_block_hash}{nonce}{current_block_data_string}'

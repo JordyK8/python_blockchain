@@ -30,17 +30,15 @@ def get_blockchain():
 @app.route('/transaction', methods=['POST'])
 def create_transaction():
     data = request.json
-    amount = data['amount']
-    sender = data['sender']
-    recipient = data['recipient']
-    block_index = bc.create_new_transaction(sender, recipient, amount)
+    transaction = data['new_transaction']
+    block_index = bc.add_transaction_to_pending_transactions(transaction)
     return jsonify({
         'message': f'Transaction will be added to Block {block_index}',
     })
 
 # Mine a new block
 @app.route('/mine', methods=['PUT'])
-def mine_block():
+async def mine_block():
     last_block = bc.get_last_block()
     previous_block_hash = last_block['hash']
 
@@ -52,13 +50,47 @@ def mine_block():
 
     block_hash = bc.hash_block(previous_block_hash, current_block_data, nonce)
 
-    block_index = bc.create_new_transaction('00', node_address, 12.5)
-
+    bc.create_new_transaction('00', node_address, 12.5)
+ 
     block = bc.create_new_block(nonce, previous_block_hash, block_hash)
 
+    async def broadcast_block(node, block):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f'{node}/receive-new-block', json={'block': block}) as response:
+                return response.text()
+
+    tasks = [broadcast_block(node, block) for node in bc.network_nodes]
+    await asyncio.gather(*tasks)
+
     return jsonify({
-        'message': 'New block mined successfully',
+        'message': 'New block mined successfully and broadcast across the network nodes',
         'block': block,
+    })
+
+# Receive new block
+@app.route("/receive-new-block", methods=["POST"])
+def add_block_to_chain():
+    data = request.json
+    block = data['block']
+
+    # verify block
+    last_block = bc.get_last_block()
+    print('last_block', last_block)
+    if last_block['hash'] != block['previous_block_hash'] or last_block['index'] + 1 != block['index']:
+        return jsonify({
+            'message': 'Block received not good',
+            'refused_block': block
+        })
+    
+    # add_block
+    bc.chain.append(block)
+
+    # empty pending_transactions
+    bc.pending_transactions = []
+
+    return jsonify({
+        'message': 'New block accepted and processed',
+        'new_block': block   
     })
 
 # Register a new node and broadcast it to the network
@@ -121,7 +153,32 @@ def register_nodes_bulk():
         'message': 'Bulk registration successful',
     })
 
+# Broadcast a transaction to the network    
+@app.route('/transaction/broadcast', methods=['POST'])
+async def broadcast_transaction():
+    data = request.json
+    sender, recipient, amount = data.values()
+    print(sender, recipient, amount)
+    print(data)
+    new_transaction = bc.create_new_transaction(sender, recipient, amount)
+    bc.add_transaction_to_pending_transactions(new_transaction)
+
+    async def bulk_broadcast_transaction(node_url, new_transaction):
+        print(new_transaction, node_url)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f'{node_url}/transaction', json={'new_transaction': new_transaction}) as response:
+                return await response.text()
+  
+    
+    tasks = [bulk_broadcast_transaction(node, new_transaction) for node in bc.network_nodes]
+    data = await asyncio.gather(*tasks)
+    return jsonify({
+        'message':'Succesfully created and broadcast transaction'
+    })
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=port)
 
 
+#video @5:31:21
