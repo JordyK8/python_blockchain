@@ -2,7 +2,7 @@
 import hashlib
 import pprint
 
-from blockchain import Blockchain
+from src.utils.blockchain import Blockchain
 
 pp = pprint.PrettyPrinter(indent=4)
 # Create a Faker instance

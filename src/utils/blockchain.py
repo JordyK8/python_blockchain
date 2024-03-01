@@ -1,16 +1,16 @@
 from datetime import datetime
 import json
 import hashlib
-import sys
 from uuid import uuid4
-port = sys.argv[1]
+from src.config.config import Config
+config = Config().dev_config
 
 class Blockchain:
     def __init__(self):
         self.chain = []
         self.pending_transactions = []
         
-        self.current_node_url = 'http://localhost:' + port
+        self.current_node_url = 'http://localhost:' + str(config.PORT)
         self.network_nodes = []
 
         self.create_new_block(nonce=100, previous_block_hash='0', hash='0')

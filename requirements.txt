@@ -1,10 +1,8 @@
 flask
 pathlib
 python-dotenv
-PyJWT
-Flask-SQLAlchemy
-Flask-Migrate
+pyjwt
+flask-sqlalchemy
+flask-migrate
 flask-bcrypt
 mysqlclient
-aiohttp
-asyncio

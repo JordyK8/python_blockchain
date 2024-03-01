@@ -1,38 +1,24 @@
-from http.client import HTTPException
-from flask import Flask, jsonify, request
+from flask import jsonify, request, Blueprint
 from uuid import uuid4
 import asyncio
 import aiohttp
+from src.utils.blockchain import Blockchain
 
-from blockchain import Blockchain, port
-
-# Instantiate the app
-app = Flask(__name__)
-
-# Error handling
-@app.errorhandler(Exception)
-def handle_exception(e):
-    print(e)
-    std_err = "Something went wrong on the server"
-    # pass through HTTP errors
-    if isinstance(e, HTTPException):
-        return jsonify(error=str(std_err)), e.code
-    # now you're handling non-HTTP exceptions only
-    return jsonify(error=str(std_err)), 500
-
-# Instantiate the blockchain
 bc = Blockchain()
+
+# user controller blueprint to be registered with api blueprint
+enx_blockchain = Blueprint("enx_blockchain", __name__)
 
 # Generate a globally unique address for this node
 node_address = str(uuid4()).replace('-', '')
 
 # Route to test server
-@app.route('/', methods=['GET'])
+@enx_blockchain.route('/', methods=['GET'])
 def test_server():
     return jsonify({'message': 'Server is running!'})
 
 # Route to get all blocks
-@app.route('/blockchain', methods=['GET'])
+@enx_blockchain.route('/blockchain', methods=['GET'])
 def get_blockchain():
     return jsonify({
         'chain': bc.chain,
@@ -42,7 +28,7 @@ def get_blockchain():
     })
 
 # Route to create a new transaction
-@app.route('/transaction', methods=['POST'])
+@enx_blockchain.route('/transaction', methods=['POST'])
 def create_transaction():
     data = request.json
     transaction = data['new_transaction']
@@ -52,7 +38,7 @@ def create_transaction():
     })
 
 # Mine a new block
-@app.route('/mine', methods=['PUT'])
+@enx_blockchain.route('/mine', methods=['PUT'])
 async def mine_block():
     last_block = bc.get_last_block()
     previous_block_hash = last_block['hash']
@@ -92,7 +78,7 @@ async def mine_block():
     })
 
 # Receive new block
-@app.route("/receive-new-block", methods=["POST"])
+@enx_blockchain.route("/receive-new-block", methods=["POST"])
 def add_block_to_chain():
     data = request.json
     block = data['block']
@@ -118,7 +104,7 @@ def add_block_to_chain():
     })
 
 # Register a new node and broadcast it to the network
-@app.route('/register-and-broadcast-node', methods=['POST'])
+@enx_blockchain.route('/register-and-broadcast-node', methods=['POST'])
 async def register_and_broadcast_node():
     data = request.json
     new_node_url = data['new_node_url']
@@ -154,7 +140,7 @@ async def register_and_broadcast_node():
 
 
 # Register a new node
-@app.route('/register-node', methods=['POST'])
+@enx_blockchain.route('/register-node', methods=['POST'])
 def register_node():
     data = request.json
     new_node_url = data['new_node_url']
@@ -171,7 +157,7 @@ def register_node():
     })
 
 # Register nodes in bulk
-@app.route('/register-nodes-bulk', methods=['POST'])
+@enx_blockchain.route('/register-nodes-bulk', methods=['POST'])
 def register_nodes_bulk():
     data = request.json
     all_network_nodes = data['all_network_nodes']
@@ -185,7 +171,7 @@ def register_nodes_bulk():
     })
 
 # Broadcast a transaction to the network    
-@app.route('/transaction/broadcast', methods=['POST'])
+@enx_blockchain.route('/transaction/broadcast', methods=['POST'])
 async def broadcast_transaction():
     data = request.json
     sender, recipient, amount = data.values()
@@ -208,7 +194,7 @@ async def broadcast_transaction():
     })
 
 # # Consensus
-@app.route('/consensus', methods=['GET'])
+@enx_blockchain.route('/consensus', methods=['GET'])
 async def consensus():
     # Get chain request
     async def get_chain(node):
@@ -244,9 +230,5 @@ async def consensus():
         'message': return_message,
         'chain': bc.chain
     })
-    
-if __name__ == '__main__':
-    app.run(debug=True, port=port)
-
 
 #video @6:50:00

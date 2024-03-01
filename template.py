@@ -8,7 +8,6 @@ LIST_FILES = [
     ".env",
     ".gitignore",
     "app.py",
-    "init_setup.py",
     "README.md",
     "requirements.txt",
     "src/__init__.py",
@@ -16,21 +15,19 @@ LIST_FILES = [
     "src/config/__init__.py",
     "src/config/config.py",
     "src/config/dev_config.py",
-    "src/config/production.py",
+    "src/config/production_config.py",
     # controllers
     "src/controllers/__init__.py",
-    "src/controllers/auth_controller.py",
     # middlewares
     "src/middlewares/__init__.py",
     # models
     "src/models/__init__.py",
-    "src/models/user_model.py",
     # services
     "src/services/__init__.py",
-    "src/services/jwt_service.py",
-    # routes and utils
+    # routes
      "src/routes.py",
-     "src/utils.py",
+    # utils
+     "src/utils/__init__.py",
    ]
 
 for file_path in LIST_FILES:
