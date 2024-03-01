@@ -44,7 +44,8 @@ class Blockchain:
         self.pending_transactions.append(transaction)
         return self.get_last_block()['index'] + 1
 
-    def hash_block(self, previous_block_hash, current_block_data, nonce):
+    @staticmethod
+    def hash_block(previous_block_hash, current_block_data, nonce):
         current_block_data_string = json.dumps(current_block_data, sort_keys=True).encode()
         data_as_string = f'{previous_block_hash}{nonce}{current_block_data_string}'
         hash_object = hashlib.sha256(data_as_string.encode())
@@ -57,6 +58,49 @@ class Blockchain:
             nonce += 1
             hash = self.hash_block(previous_block_hash, current_block_data, nonce)
         return nonce
+    
+    @staticmethod
+    def chain_is_valid(chain):
+        valid_chain = True
+        chain_length = len(chain)
+        if chain_length > 1:
+            for index in range(1, chain_length):
+                print('index',index)
+                print('chain',chain)
+                block = chain[index]
+                previous_block = chain[index - 1]
+                 
+                 # Hash block to validate hash
+                block_hash = Blockchain.hash_block(
+                    previous_block['hash'],  
+                    {
+                        'transactions': block['transactions'],
+                        'index': block['index'],
+                    },  
+                    block["nonce"]  
+                )
+
+                # Check validity per block
+                if not block_hash.startswith('0000') or block['previous_block_hash'] != previous_block['hash']:
+                    valid_chain = False
+                    break
+        else:
+            valid_chain = False  # Chain with less than 2 blocks is considered invalid
+        
+        # Check genisis block
+        genesis_block = chain[0]
+        correct_nonce = genesis_block['nonce'] == 100
+        correct_block = genesis_block['previous_block_hash'] == '0' 
+        correct_hash = genesis_block['hash'] == '0' 
+        correct_index = genesis_block['index'] == 1
+        correct_transactions = len(genesis_block['transactions']) == 0
+        if not correct_nonce or not correct_block or not correct_hash or not correct_transactions or not correct_index:
+            valid_chain = False
+        
+        # return result
+        return valid_chain
+
+
 
     def __repr__(self):
         indent = ' ' * 4  # Adjust the number of spaces for indentation as needed

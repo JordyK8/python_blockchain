@@ -1,14 +1,29 @@
+from http.client import HTTPException
 from flask import Flask, jsonify, request
-import json
 from uuid import uuid4
 import asyncio
 import aiohttp
 
 from blockchain import Blockchain, port
 
-
+# Instantiate the app
 app = Flask(__name__)
+
+# Error handling
+@app.errorhandler(Exception)
+def handle_exception(e):
+    print(e)
+    std_err = "Something went wrong on the server"
+    # pass through HTTP errors
+    if isinstance(e, HTTPException):
+        return jsonify(error=str(std_err)), e.code
+    # now you're handling non-HTTP exceptions only
+    return jsonify(error=str(std_err)), 500
+
+# Instantiate the blockchain
 bc = Blockchain()
+
+# Generate a globally unique address for this node
 node_address = str(uuid4()).replace('-', '')
 
 # Route to test server
@@ -46,21 +61,30 @@ async def mine_block():
         'transactions': bc.pending_transactions,
         'index': last_block['index'] + 1,
     }
+
     nonce = bc.proof_of_work(previous_block_hash, current_block_data)
 
     block_hash = bc.hash_block(previous_block_hash, current_block_data, nonce)
-
-    bc.create_new_transaction('00', node_address, 12.5)
  
     block = bc.create_new_block(nonce, previous_block_hash, block_hash)
 
+    # Broadcast the new block to the network
     async def broadcast_block(node, block):
         async with aiohttp.ClientSession() as session:
             async with session.post(f'{node}/receive-new-block', json={'block': block}) as response:
                 return response.text()
 
+     # Handle tasks concurrently
     tasks = [broadcast_block(node, block) for node in bc.network_nodes]
     await asyncio.gather(*tasks)
+    # broadcast reward transaction
+    async def broadcast_reward_transaction(node):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f'{node}/transaction/broadcast', json={'sender': '00', 'recipient': node_address,'amount': 12.5}) as response:
+                return response.text()
+
+     # Handle broadcasting transaction
+    await broadcast_reward_transaction(bc.current_node_url)
 
     return jsonify({
         'message': 'New block mined successfully and broadcast across the network nodes',
@@ -73,7 +97,7 @@ def add_block_to_chain():
     data = request.json
     block = data['block']
 
-    # verify block
+    # Verify block
     last_block = bc.get_last_block()
     print('last_block', last_block)
     if last_block['hash'] != block['previous_block_hash'] or last_block['index'] + 1 != block['index']:
@@ -98,22 +122,28 @@ def add_block_to_chain():
 async def register_and_broadcast_node():
     data = request.json
     new_node_url = data['new_node_url']
+
+    # Register the new node only if it is not already in the list
     if not new_node_url in bc.network_nodes:
         bc.network_nodes.append(new_node_url)
     
+    # Broadcast the new node to the network
     async def register_node(node, new_node_url):
         async with aiohttp.ClientSession() as session:
             async with session.post(f'{node}/register-node', json={'new_node_url': new_node_url}) as response:
                 return await response.text()
-    print('nodes:', bc.network_nodes)
+            
+    # Handle tasks concurrently
     tasks = [register_node(node, new_node_url) for node in bc.network_nodes]
     data = await asyncio.gather(*tasks)
 
+    # Register the existing nodes on the new node
     async def bulk_register_data(all_network_nodes, new_node_url):
         async with aiohttp.ClientSession() as session:
             async with session.post(f'{new_node_url}/register-nodes-bulk', json={'all_network_nodes': all_network_nodes}) as response:
                 return await response.text()
-  
+   
+    # Handle task
     all_network_nodes = bc.network_nodes + [bc.current_node_url]
     bulk_register_data = await bulk_register_data(all_network_nodes, new_node_url)
     print(bulk_register_data)
@@ -128,12 +158,14 @@ async def register_and_broadcast_node():
 def register_node():
     data = request.json
     new_node_url = data['new_node_url']
+
+    # Register the new node only if it is not already in the list and it is not the current node
     if not new_node_url in bc.network_nodes and bc.current_node_url != new_node_url:
         bc.network_nodes.append(new_node_url)
         return jsonify({
             'message': 'New node registered successfully',
         })
-    print('nodes:', bc.network_nodes)
+    
     return jsonify({
         'message': 'Node already registered',
     })
@@ -142,13 +174,12 @@ def register_node():
 @app.route('/register-nodes-bulk', methods=['POST'])
 def register_nodes_bulk():
     data = request.json
-    print('data:', data)
     all_network_nodes = data['all_network_nodes']
-    print('all_network_nodes:', all_network_nodes)
+    
     for node in all_network_nodes:
         if not node in bc.network_nodes and node != bc.current_node_url:
             bc.network_nodes.append(node)
-    print('nodes:', bc.network_nodes)
+
     return jsonify({
         'message': 'Bulk registration successful',
     })
@@ -158,27 +189,64 @@ def register_nodes_bulk():
 async def broadcast_transaction():
     data = request.json
     sender, recipient, amount = data.values()
-    print(sender, recipient, amount)
-    print(data)
+
     new_transaction = bc.create_new_transaction(sender, recipient, amount)
     bc.add_transaction_to_pending_transactions(new_transaction)
 
+    # Broadcast the new transaction to the network
     async def bulk_broadcast_transaction(node_url, new_transaction):
         print(new_transaction, node_url)
         async with aiohttp.ClientSession() as session:
             async with session.post(f'{node_url}/transaction', json={'new_transaction': new_transaction}) as response:
                 return await response.text()
   
-    
+    # Handle tasks concurrently
     tasks = [bulk_broadcast_transaction(node, new_transaction) for node in bc.network_nodes]
     data = await asyncio.gather(*tasks)
     return jsonify({
         'message':'Succesfully created and broadcast transaction'
     })
 
+# # Consensus
+@app.route('/consensus', methods=['GET'])
+async def consensus():
+    # Get chain request
+    async def get_chain(node):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{node}/blockchain') as response:
+                return await response.json()
+    
+    # handle tasks concurrently
+    tasks = [get_chain(node) for node in bc.network_nodes]
+    blockchains = await asyncio.gather(*tasks)
+    if not len(blockchains):
+        return jsonify({
+            'message': "It seems like your the only one on the network, make sure your registered in the network before asking for consensus"
+        })
+    print(blockchains)
 
+    return_message = 'Current chain not replaced'
+
+    # Find longest chain
+    longest_chain_in_network = max(blockchains, key=lambda x: len(x['chain']))
+    print(longest_chain_in_network)
+    print(bc.chain)
+    print(longest_chain_in_network['chain'])
+    if len(longest_chain_in_network['chain']) > len(bc.chain):
+        # Replace current pending transactions with longest chain trasactions when longest chain valid
+        if Blockchain.chain_is_valid(longest_chain_in_network['chain']):
+            bc.pending_transactions = longest_chain_in_network['pending_transactions']
+            bc.chain = longest_chain_in_network['chain']
+            return_message = 'Chain has been replaced'
+        else:
+            return_message = "Longerchain is not valid, current chain not replaced"
+    return jsonify({
+        'message': return_message,
+        'chain': bc.chain
+    })
+    
 if __name__ == '__main__':
     app.run(debug=True, port=port)
 
 
-#video @5:31:21
+#video @6:50:00
